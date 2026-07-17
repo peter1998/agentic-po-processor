@@ -135,7 +135,9 @@ These are scope calls, not things that got missed.
 
 ## Architecture
 
-See [`docs/architecture_diagram.png`](docs/architecture_diagram.png) and [`docs/user_stories_diagram.png`](docs/user_stories_diagram.png) for the full visual flow, from user need through to storage and observability.
+![Architecture diagram](docs/architecture_diagram.png)
+
+*From user need (left) to technical flow (right) — email intake through validation gates to storage and human review.*
 
 ---
 
