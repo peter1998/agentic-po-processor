@@ -16,6 +16,12 @@ from utils.config import settings
 from utils.csv_parser import try_deterministic_csv_parse
 from utils.gates import compute_gate1_fraction, compute_gate2_rate
 
+# If pdfplumber extracts fewer than this many characters, the PDF is
+# almost certainly a scan with no embedded text layer, not a text
+# document — fall back to Vision instead of feeding near-empty text to
+# the extraction LLM.
+_MIN_TEXT_LENGTH_FOR_TEXT_PATH = 20
+
 
 def parse_file(state: GraphState) -> dict:
     if state.file_type == "csv":
@@ -28,6 +34,12 @@ def parse_file(state: GraphState) -> dict:
     if state.file_type == "pdf":
         with pdfplumber.open(state.file_path) as pdf:
             text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+
+        if len(text.strip()) < _MIN_TEXT_LENGTH_FOR_TEXT_PATH:
+            # Scanned PDF with no real text layer — treat it like an
+            # image for extraction purposes instead of failing on empty text.
+            return {"file_type": "image", "raw_text": None}
+
         return {"raw_text": text}
 
     if state.file_type == "image":
