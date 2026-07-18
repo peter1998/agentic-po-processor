@@ -15,7 +15,7 @@ from datetime import date
 from enum import Enum
 from typing import ClassVar, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ---------------------------------------------------------------------------
@@ -115,5 +115,4 @@ class GraphState(BaseModel):
         None, description="Human-readable reason if routed to review — shown to the reviewer."
     )
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
