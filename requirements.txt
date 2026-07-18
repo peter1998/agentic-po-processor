@@ -22,6 +22,9 @@ pdfplumber==0.11.4
 pdf2image==1.17.0
 pandas==2.2.3
 
+# Dev/demo tooling (used to generate the sample PDF in data/demo_files/, not needed at runtime)
+reportlab==4.2.5
+
 # Database
 sqlalchemy==2.0.36
 
