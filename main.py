@@ -17,6 +17,7 @@ from agents.graph import build_graph
 from models.schema import GraphState
 from utils.config import settings
 import services.storage as storage
+import services.vectorstore as vectorstore
 
 app = FastAPI(title="Agentic PO Processor")
 
@@ -37,6 +38,7 @@ _UPLOAD_DIR = Path("data/uploads")
 def on_startup() -> None:
     storage.init_db()
     _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    vectorstore.build_corpus()
 
 
 def _verify_api_key(x_api_key: str = Header(...)) -> None:

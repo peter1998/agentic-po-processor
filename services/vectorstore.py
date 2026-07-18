@@ -43,10 +43,21 @@ def _policy_to_text(p: dict) -> str:
     return p["rule"]
 
 
-def build_corpus(corpus_dir: str = "data/rag_corpus") -> None:
+def build_corpus(corpus_dir: str = "data/rag_corpus", force: bool = False) -> None:
     """Load the JSON corpus files and (re)index them into ChromaDB.
-    Safe to call more than once — deterministic IDs mean re-indexing
-    overwrites existing entries instead of duplicating them."""
+
+    Skips re-embedding if the suppliers collection is already populated,
+    unless force=True — re-indexing calls the real Voyage API for every
+    document, and there's no reason to pay for that on every server
+    restart when the corpus data hasn't changed."""
+
+    if not force:
+        try:
+            existing = _chroma_client.get_collection("suppliers")
+            if existing.count() > 0:
+                return
+        except Exception:
+            pass  # collection doesn't exist yet — proceed to build it
 
     with open(f"{corpus_dir}/suppliers.json") as f:
         suppliers = json.load(f)
