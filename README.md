@@ -30,6 +30,24 @@ The task explicitly ruled out invoices — "every automation platform has a read
 
 ---
 
+## Code organization
+
+```
+agents/graph.py         LangGraph wiring — nodes, conditional routing, the retry loop
+services/llm.py          Claude text/vision extraction, RAG reasoning calls
+services/vectorstore.py  ChromaDB + Voyage indexing and retrieval
+services/storage.py      SQLite — normalized orders, JSON-snapshot review queue
+utils/gates.py           Gate 1 / Gate 2 math — pure functions, no LLM calls, no I/O
+utils/csv_parser.py      Deterministic CSV path (ADR-006)
+utils/config.py          Settings, loaded once from .env
+models/schema.py         Pydantic models — domain data and LangGraph state
+tests/                   Unit tests for utils/gates.py and utils/csv_parser.py
+```
+
+The gate math and CSV parsing logic live in `utils/`, separate from the LangGraph node functions in `agents/graph.py`, specifically so they can be unit tested in isolation — no mocking an LLM or a graph run needed to verify a threshold calculation.
+
+---
+
 ## System design — problem by problem
 
 ### Problem 1: The sender shouldn't have to wait for processing to finish
@@ -44,7 +62,7 @@ The trade-off: FastAPI's `BackgroundTasks` loses in-flight work if the server re
 
 **Solution:**
 - **Text-based PDF** → `pdfplumber` extracts text directly. Fast, cheap, no LLM call needed.
-- **Scanned PDF or image** → Claude Vision reads it directly instead of running OCR (Tesseract) first. Tesseract is free but chokes on poor scans, unusual fonts, or noisy photos, and it's another tool to install and babysit. Vision costs more per call but is far more reliable, and the same model ends up handling both vision and text — one less moving part in the pipeline.
+- **Scanned PDF or image** → Claude Vision reads it directly instead of running OCR (Tesseract) first. If `pdfplumber` extracts fewer than 20 characters from a PDF, it's treated as a scan with no text layer and routed to the same Vision path as images — a text-based PDF and a scanned one need different handling, and guessing wrong in either direction either wastes a Vision call or feeds near-empty text to the extraction model.
 - **CSV** → loaded with `pandas`. If the column headers match an expected set exactly (`supplier_name`, `product_code`, `quantity`, `unit_price`), it converts to JSON directly in code, no LLM involved. Anything else falls back to the same Claude extraction path as PDF/image. Clean CSVs stay cheap and predictable; only the messy ones cost an LLM call.
 
 ### Problem 3: An LLM extraction can be incomplete, and validating incomplete data is worse than useless
@@ -58,11 +76,13 @@ Run RAG validation against a half-filled record and you can get a confident-soun
 
 The retry cap exists because an unreadable file could otherwise send the agent into an open-ended loop, burning time and API cost for no gain. One retry is enough to catch a bad first pass without leaving the failure mode unbounded.
 
+*A quantization detail worth naming:* for a single-item order, the four required fields mean the fraction can only land on 0, 0.25, 0.5, 0.75, or 1.0. At a 0.6 threshold, a single missing field (0.75) always passes Gate 1, while two missing fields (0.5) always fails. The demo file for this scenario (`missing_field_order.pdf`) deliberately omits two fields, not one, to actually exercise the retry-then-review path — this was caught by running the full pipeline end to end, not by inspecting the threshold math in isolation.
+
 ### Problem 4: Extracted data can be *complete* but still *wrong*
 
 A supplier name or product code can be sitting right there in the extracted JSON and still be wrong — nonexistent, or outside agreed terms.
 
-**RAG validation:** a small knowledge base (approved suppliers, item catalog with price ranges, a few sample policies) sits in ChromaDB, indexed with Voyage AI embeddings — Voyage over the more common OpenAI default because it's purpose-built for retrieval and it's what Anthropic recommends pairing with Claude.
+**RAG validation:** a small knowledge base (approved suppliers, item catalog with price ranges, a few sample policies) sits in ChromaDB, indexed with Voyage AI embeddings (`voyage-4-lite`) — Voyage over the more common OpenAI default because it's purpose-built for retrieval and it's what Anthropic recommends pairing with Claude.
 
 Retrieval by itself doesn't count as validation here. The closest-matching supplier name in the database might just be *textually* close — a near-match on the name could easily be a different company. So there's a second step: the extracted data and the retrieved document both go to the LLM with one question — does this actually match, or is there a discrepancy? That reasoning call, not the similarity score, is what decides valid or invalid per item.
 
@@ -72,6 +92,8 @@ Retrieval by itself doesn't count as validation here. The closest-matching suppl
 - `< 75%` → the entire order goes to human review, not just the failing line.
 
 Splitting an order — auto-approving the good lines, flagging only the bad one — is possible, but it means partial-order state, partial storage, partial notifications, more than a 72-hour scope should take on. Flagging the whole order is the simpler call, and it's simpler on purpose, not because splitting wasn't considered.
+
+The RAG corpus is indexed once, at server startup, and skipped on subsequent restarts if it's already populated — re-embedding a small, unchanged corpus on every restart would just be paying the Voyage API for no reason. A `force=True` flag exists to rebuild it deliberately when the corpus data changes.
 
 ### Problem 5: Someone needs to be able to act on a flagged order without a custom UI
 
@@ -93,6 +115,17 @@ One overall "confidence score" would be simpler to log and simpler to explain in
 | **Gate 2** — RAG Validation Rate | Is what we got actually correct? | After RAG validation | Route to review, no retry |
 
 A missing field and a bad price are different problems that need different fixes — collapsing them into one score would mean a reviewer opens a flagged order with no idea which kind of problem they're looking at.
+
+---
+
+## Found and fixed during testing
+
+Two gaps surfaced while running the full pipeline end to end with mocked LLM/RAG calls — not caught by unit tests alone, since both only show up when the pieces run together:
+
+- **RAG corpus wasn't indexed automatically.** The vector store code worked in isolation, but nothing called it at startup — the first real request would have hit an empty ChromaDB collection. Fixed by indexing at startup, with a check to skip re-indexing if the corpus is already populated.
+- **Scanned PDFs had no Vision fallback.** `parse_file` ran every PDF through `pdfplumber` regardless of whether it actually had a text layer, so a real scan would have produced empty text instead of triggering Vision. Fixed with a length check on the extracted text.
+
+Both are noted here rather than silently folded into the code, because the process of finding them — running the actual pipeline against realistic mocked scenarios, not just testing each function in isolation — is as relevant as the fixes themselves.
 
 ---
 
@@ -124,8 +157,8 @@ These are scope calls, not things that got missed.
 
 | Component | Choice | Reasoning |
 |---|---|---|
-| LLM | Claude Sonnet 3.5 | Also handles vision, reducing the stack's moving parts |
-| Embeddings | Voyage AI | Purpose-built for retrieval; Anthropic-recommended |
+| LLM | Claude Sonnet 5 | Also handles vision, reducing the stack's moving parts |
+| Embeddings | Voyage AI (`voyage-4-lite`) | Purpose-built for retrieval; Anthropic-recommended |
 | Agent framework | LangGraph | Native support for stateful, conditional, cyclic flows (needed for the retry loop) |
 | Vector DB | ChromaDB | Lightweight, no external server needed for this scope |
 | Storage | SQLite | No external dependency, still demonstrates relational data handling |
@@ -149,10 +182,20 @@ cp .env.example .env  # add your API keys
 uvicorn main:app --reload
 ```
 
+`pdf2image` requires `poppler-utils` at the system level (`sudo apt-get install poppler-utils` on Debian/Ubuntu) — `pip install` alone won't cover it.
+
 ## Testing
 
 ```bash
 pytest tests/
 ```
 
-Unit tests cover the deterministic logic (Gate 1/Gate 2 thresholds, CSV header matching). The end-to-end path is demonstrated with three sample files (`data/demo_files/`) covering a valid order, one with a missing field, and one with a conflicting price — see the screen recording for a live walkthrough.
+15 unit tests cover the deterministic logic — Gate 1/Gate 2 threshold math (`utils/gates.py`) and CSV header matching (`utils/csv_parser.py`) — with no LLM calls involved, so they run in well under a second.
+
+```bash
+pytest tests/ --cov=utils --cov=models --cov-report=term-missing
+```
+
+`utils/gates.py` and `models/schema.py` are at 100% coverage; `utils/csv_parser.py` at 94% (one untested branch: an edge case with correct headers but zero data rows). `utils/config.py` shows 0% under this command because it requires real environment variables to import — it's exercised by the running application, not by the unit test suite.
+
+The end-to-end path is demonstrated with three sample files (`data/demo_files/`) covering a valid order, one with a missing field, and one with a conflicting price — see the screen recording for a live walkthrough.

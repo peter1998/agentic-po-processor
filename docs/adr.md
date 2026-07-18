@@ -101,3 +101,19 @@ Short-form ADRs for the key decisions in this project. Each one names what was c
 **Why:** No auth on an endpoint that moves orders into the "approved" table would be a real gap, not just a demo simplification. A full JWT/session system is more than this task calls for. A static API key is the minimum that's still real security.
 
 **Consequences:** Not production-grade — a single shared key, no per-user identity, no rotation. Documented in the README as a known scope limit.
+
+---
+
+## ADR-008: Index the RAG corpus once at startup, skip if already populated
+
+**Status:** Accepted
+
+**Context:** The RAG corpus needs to exist in ChromaDB before the first real request hits `rag_validate` — this wasn't wired up initially and surfaced as a gap during end-to-end testing (see README, "Found and fixed during testing").
+
+**Decision:** `build_corpus()` runs in the FastAPI startup event. It checks whether the `suppliers` collection already has entries and returns immediately if so, unless called with `force=True`.
+
+**Alternatives considered:** Re-index unconditionally on every startup; index lazily on the first request instead of at startup.
+
+**Why:** Unconditional re-indexing calls the real Voyage embedding API for every document on every restart — wasted cost and latency for a corpus that doesn't change between restarts in this scope. Lazy indexing on first request would mean the first real order after any restart pays an unpredictable latency penalty and risks a race if two requests arrive before indexing finishes. Indexing eagerly at startup, but only when needed, avoids both problems.
+
+**Consequences:** If the corpus data files change on disk, the running server won't pick up the change without an explicit `force=True` rebuild or a restart combined with clearing the existing collection. Acceptable for a demo where the corpus is static; would need a proper versioning or file-hash check in production.
