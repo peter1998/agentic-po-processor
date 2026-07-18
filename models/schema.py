@@ -94,6 +94,12 @@ class GraphState(BaseModel):
     # --- working data, filled in as the graph progresses ---
     raw_text: Optional[str] = Field(None, description="Set by parse_file for text-based inputs.")
     extracted_order: Optional[PurchaseOrder] = Field(None, description="Set by extract_to_json.")
+    skip_llm_extraction: bool = Field(
+        default=False,
+        description="True only when parse_file's deterministic CSV path already produced a "
+        "complete extracted_order — tells extract_to_json not to call the LLM at all, "
+        "including on any retry loop.",
+    )
 
     # --- Gate 1: extraction completeness ---
     gate1_fraction: Optional[float] = Field(None)
