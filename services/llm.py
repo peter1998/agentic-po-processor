@@ -68,6 +68,57 @@ def extract_from_text(text: str) -> tuple[PurchaseOrder | None, str | None]:
     return _parse_llm_json(raw_text)
 
 
+_VALIDATION_INSTRUCTIONS = """You are checking whether an extracted purchase order item is valid, using retrieved reference data.
+
+Extracted item: product_code={product_code}, quantity={quantity}, unit_price={unit_price}
+Supplier on the order: {supplier_name}
+
+Retrieved catalog entry (closest match by similarity, may or may not be correct): {catalog_doc}
+Retrieved supplier entry (closest match by similarity, may or may not be correct): {supplier_doc}
+
+Decide: does the extracted item actually match the retrieved reference data, or is there a discrepancy
+(wrong supplier, price outside the approved range, product code that doesn't really match)?
+A textually similar match is not automatically correct — check the actual numbers and names.
+
+Return ONLY a JSON object: {{"is_valid": true or false, "reason": "one short sentence explaining why"}}
+No markdown fences, no other text.
+"""
+
+
+def reason_about_item_validity(
+    product_code: str,
+    quantity: float | None,
+    unit_price: float | None,
+    supplier_name: str | None,
+    catalog_doc: str | None,
+    supplier_doc: str | None,
+) -> tuple[bool, str]:
+    """The Gate 2 reasoning step: retrieval alone isn't validation (see
+    ADR / README) — this call decides whether the retrieved reference
+    actually confirms the extracted data, not just whether it's textually
+    close. Returns (is_valid, reason); defaults to invalid on any parse
+    failure, since an unreadable verdict should never silently pass."""
+    prompt = _VALIDATION_INSTRUCTIONS.format(
+        product_code=product_code,
+        quantity=quantity,
+        unit_price=unit_price,
+        supplier_name=supplier_name,
+        catalog_doc=catalog_doc or "No match found in catalog.",
+        supplier_doc=supplier_doc or "No match found in supplier list.",
+    )
+    response = _client.messages.create(
+        model=_MODEL,
+        max_tokens=256,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw_text = response.content[0].text
+    try:
+        data = json.loads(raw_text)
+        return bool(data["is_valid"]), str(data["reason"])
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return False, f"Could not parse validation response: {raw_text[:200]}"
+
+
 def extract_from_image(image_path: str, media_type: str = "image/png") -> tuple[PurchaseOrder | None, str | None]:
     """Extract a PurchaseOrder from an image (scanned document or photo)."""
     with open(image_path, "rb") as f:
