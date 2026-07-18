@@ -1,0 +1,50 @@
+[
+  {
+    "id": "SUP-001",
+    "name": "Acme Fasteners Ltd",
+    "category": "hardware and fasteners",
+    "approved": true
+  },
+  {
+    "id": "SUP-002",
+    "name": "Nordic Steel Components AB",
+    "category": "structural steel components",
+    "approved": true
+  },
+  {
+    "id": "SUP-003",
+    "name": "Globex Industrial Supplies",
+    "category": "general industrial consumables",
+    "approved": true
+  },
+  {
+    "id": "SUP-004",
+    "name": "Precision Sensor Systems GmbH",
+    "category": "industrial sensors and instrumentation",
+    "approved": true
+  },
+  {
+    "id": "SUP-005",
+    "name": "Balkan Packaging Solutions EOOD",
+    "category": "packaging materials",
+    "approved": true
+  },
+  {
+    "id": "SUP-006",
+    "name": "Meridian Electrical Components",
+    "category": "electrical and wiring components",
+    "approved": true
+  },
+  {
+    "id": "SUP-007",
+    "name": "Carpathian Lubricants and Chemicals",
+    "category": "industrial lubricants and chemicals",
+    "approved": true
+  },
+  {
+    "id": "SUP-008",
+    "name": "Vector Safety Equipment Ltd",
+    "category": "personal protective equipment",
+    "approved": true
+  }
+]

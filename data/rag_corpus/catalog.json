@@ -1,0 +1,66 @@
+[
+  {
+    "product_code": "FAS-M8-100",
+    "description": "M8 steel hex bolts, box of 100",
+    "supplier_id": "SUP-001",
+    "unit_price_min": 0.10,
+    "unit_price_max": 0.25,
+    "currency": "EUR"
+  },
+  {
+    "product_code": "STL-BEAM-2M",
+    "description": "Structural steel beam, 2 meter, galvanized",
+    "supplier_id": "SUP-002",
+    "unit_price_min": 45.00,
+    "unit_price_max": 68.00,
+    "currency": "EUR"
+  },
+  {
+    "product_code": "GLX-GLOVE-L",
+    "description": "Industrial work gloves, size L, pack of 12",
+    "supplier_id": "SUP-003",
+    "unit_price_min": 8.50,
+    "unit_price_max": 14.00,
+    "currency": "EUR"
+  },
+  {
+    "product_code": "SNS-TEMP-4K",
+    "description": "Industrial temperature sensor, 4-20mA output",
+    "supplier_id": "SUP-004",
+    "unit_price_min": 150.00,
+    "unit_price_max": 310.00,
+    "currency": "EUR"
+  },
+  {
+    "product_code": "PKG-BOX-M",
+    "description": "Corrugated shipping box, medium, bundle of 50",
+    "supplier_id": "SUP-005",
+    "unit_price_min": 22.00,
+    "unit_price_max": 35.00,
+    "currency": "EUR"
+  },
+  {
+    "product_code": "ELC-CABLE-10M",
+    "description": "Shielded electrical cable, 10 meter roll",
+    "supplier_id": "SUP-006",
+    "unit_price_min": 18.00,
+    "unit_price_max": 27.00,
+    "currency": "EUR"
+  },
+  {
+    "product_code": "LUB-OIL-5L",
+    "description": "Industrial machine lubricant, 5 liter container",
+    "supplier_id": "SUP-007",
+    "unit_price_min": 32.00,
+    "unit_price_max": 50.00,
+    "currency": "EUR"
+  },
+  {
+    "product_code": "PPE-HELMET-01",
+    "description": "Safety helmet, EN 397 certified",
+    "supplier_id": "SUP-008",
+    "unit_price_min": 12.00,
+    "unit_price_max": 22.00,
+    "currency": "EUR"
+  }
+]

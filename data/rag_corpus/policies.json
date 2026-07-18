@@ -1,0 +1,18 @@
+[
+  {
+    "id": "POL-001",
+    "rule": "Purchase orders must only use suppliers from the approved supplier list. Orders from unlisted suppliers require manual review."
+  },
+  {
+    "id": "POL-002",
+    "rule": "Orders with a total amount above 10,000 EUR require manager approval before processing, regardless of item validity."
+  },
+  {
+    "id": "POL-003",
+    "rule": "Unit prices must fall within the approved price range for that product code. Prices outside the range must be flagged for review, even if the supplier and product code are otherwise valid."
+  },
+  {
+    "id": "POL-004",
+    "rule": "Requested delivery dates must be at least 5 business days after the order date. Shorter lead times require manual confirmation with the supplier."
+  }
+]
