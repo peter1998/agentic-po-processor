@@ -13,7 +13,7 @@ from utils.config import settings
 
 _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
-_MODEL = "claude-sonnet-4-6"  # verify current model string in docs.claude.com before relying on this in production
+_MODEL = "claude-sonnet-5"  # verify current model string in docs.claude.com if this changes
 
 _EXTRACTION_INSTRUCTIONS = """You are extracting structured data from a purchase order document.
 

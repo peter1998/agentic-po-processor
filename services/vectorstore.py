@@ -13,7 +13,7 @@ import voyageai
 
 from utils.config import settings
 
-_EMBED_MODEL = "voyage-3-large"
+_EMBED_MODEL = "voyage-4-lite"  # current (Jan 2026) generation; older voyage-3.x no longer gets free-tier tokens
 
 _chroma_client = chromadb.PersistentClient(path=settings.chroma_persist_path)
 _voyage_client = voyageai.Client(api_key=settings.voyage_api_key)
