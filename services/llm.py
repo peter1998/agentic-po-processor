@@ -36,6 +36,17 @@ Rules:
 """
 
 
+def _extract_text(response) -> str:
+    """Claude's response content can include a ThinkingBlock before the
+    actual TextBlock (extended thinking). Find the text block explicitly
+    instead of assuming content[0] is always text — a real API response
+    surfaced this; no mock ever would have."""
+    for block in response.content:
+        if block.type == "text":
+            return block.text
+    raise ValueError(f"No text block found in response content: {response.content}")
+
+
 def _parse_llm_json(raw_text: str) -> tuple[PurchaseOrder | None, str | None]:
     """Shared parsing step for both extraction paths. Returns (order, None)
     on success, or (None, error_reason) on failure — never raises."""
@@ -64,7 +75,7 @@ def extract_from_text(text: str) -> tuple[PurchaseOrder | None, str | None]:
             }
         ],
     )
-    raw_text = response.content[0].text
+    raw_text = _extract_text(response)
     return _parse_llm_json(raw_text)
 
 
@@ -111,7 +122,7 @@ def reason_about_item_validity(
         max_tokens=256,
         messages=[{"role": "user", "content": prompt}],
     )
-    raw_text = response.content[0].text
+    raw_text = _extract_text(response)
     try:
         data = json.loads(raw_text)
         return bool(data["is_valid"]), str(data["reason"])
@@ -144,5 +155,5 @@ def extract_from_image(image_path: str, media_type: str = "image/png") -> tuple[
             }
         ],
     )
-    raw_text = response.content[0].text
+    raw_text = _extract_text(response)
     return _parse_llm_json(raw_text)
