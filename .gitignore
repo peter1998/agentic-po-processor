@@ -217,3 +217,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .vscode/
+
+# Runtime-generated data — not source, regenerated on every real run
+data/purchase_orders.db
+data/chroma_db/
+data/uploads/*
+!data/uploads/.gitkeep
