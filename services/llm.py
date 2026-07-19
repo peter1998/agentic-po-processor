@@ -47,9 +47,22 @@ def _extract_text(response) -> str:
     raise ValueError(f"No text block found in response content: {response.content}")
 
 
+def _strip_markdown_fences(text: str) -> str:
+    """Claude sometimes wraps JSON in ```json ... ``` even when told not
+    to — a real API response surfaced this; strip it defensively rather
+    than trust the instruction alone."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text
+        if text.endswith("```"):
+            text = text.rsplit("```", 1)[0]
+    return text.strip()
+
+
 def _parse_llm_json(raw_text: str) -> tuple[PurchaseOrder | None, str | None]:
     """Shared parsing step for both extraction paths. Returns (order, None)
     on success, or (None, error_reason) on failure — never raises."""
+    raw_text = _strip_markdown_fences(raw_text)
     try:
         data = json.loads(raw_text)
     except json.JSONDecodeError as e:
