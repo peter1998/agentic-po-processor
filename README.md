@@ -97,11 +97,13 @@ The RAG corpus is indexed once, at server startup, and skipped on subsequent res
 
 ### Problem 5: Someone needs to be able to act on a flagged order without a custom UI
 
-Flagged orders go into a `pending_reviews` table with the full context of why they were flagged. `POST /review/approve`, protected with an `X-API-Key` header, lets a reviewer approve an order by ID and moves it into `purchase_orders`. There's no UI — a callable, authenticated endpoint is enough to prove the review loop actually closes, which is the part that matters for this task.
+Flagged orders go into a `pending_reviews` table with the full context of why they were flagged. `GET /review/pending` lists everything currently waiting — without it, a reviewer would need to already know an order's ID to do anything, which isn't how a real review queue works. `POST /review/approve`, protected with an `X-API-Key` header, lets a reviewer approve an order by ID and moves it into `purchase_orders`. There's no UI — a callable, authenticated pair of endpoints is enough to prove the review loop actually closes, which is the part that matters for this task.
 
 ### Problem 6: When something goes wrong, someone needs to be able to find out why
 
-Every LLM call, RAG lookup, and routing decision is traced through LangSmith (`LANGCHAIN_TRACING_V2=true`), plus structured JSON logs carrying a `correlation_id` that ties one order's journey together end to end. It's a small addition, and it's the reason a bad outcome is traceable instead of a mystery.
+Every LLM call, RAG lookup, and routing decision is traced through LangSmith, plus structured JSON logs carrying a `correlation_id` that ties one order's journey together end to end. It's a small addition, and it's the reason a bad outcome is traceable instead of a mystery.
+
+Getting this actually working took two fixes past "set the env vars": the raw `anthropic` SDK bypasses LangChain's auto-instrumentation entirely, so calls need to go through `langsmith.wrappers.wrap_anthropic()` to show up at all. And `pydantic-settings`' `env_file=` only populates our own `Settings` object — it doesn't inject values into the process's real `os.environ`, which is what the LangSmith SDK actually reads. Without an explicit `load_dotenv()` call, tracing silently did nothing despite every env var being "set" as far as our own code was concerned.
 
 ---
 
@@ -120,12 +122,20 @@ A missing field and a bad price are different problems that need different fixes
 
 ## Found and fixed during testing
 
-Two gaps surfaced while running the full pipeline end to end with mocked LLM/RAG calls — not caught by unit tests alone, since both only show up when the pieces run together:
+### During pipeline testing with mocked LLM/RAG calls
+
+Two gaps surfaced while running the full pipeline end to end with mocked calls — not caught by unit tests alone, since both only show up when the pieces run together:
 
 - **RAG corpus wasn't indexed automatically.** The vector store code worked in isolation, but nothing called it at startup — the first real request would have hit an empty ChromaDB collection. Fixed by indexing at startup, with a check to skip re-indexing if the corpus is already populated.
 - **Scanned PDFs had no Vision fallback.** `parse_file` ran every PDF through `pdfplumber` regardless of whether it actually had a text layer, so a real scan would have produced empty text instead of triggering Vision. Fixed with a length check on the extracted text.
 
-Both are noted here rather than silently folded into the code, because the process of finding them — running the actual pipeline against realistic mocked scenarios, not just testing each function in isolation — is as relevant as the fixes themselves.
+### During integration testing with real API keys
+
+Real calls to Claude Sonnet 5 surfaced three things mocked testing couldn't have caught, since mocks only ever return the shape of data we told them to:
+
+- `response.content[0]` isn't always the text block. Extended thinking means Claude can prepend a `ThinkingBlock` before the actual `TextBlock`. Code that assumed position 0 crashed with `AttributeError: 'ThinkingBlock' object has no attribute 'text'` on the first real extraction call. Fixed by searching `response.content` for the block with `type == "text"` instead of assuming an index.
+- Claude wrapped JSON in markdown fences despite the prompt explicitly saying not to. Real responses came back as ` ```json\n{...}\n``` ` anyway. `_parse_llm_json` now strips fences before calling `json.loads()`, instead of trusting the instruction alone.
+- A corrupted PDF crashed the background task instead of routing to review. `parse_file` had no error handling around `pdfplumber.open()` — tested with random bytes given a `.pdf` extension, which raised an unhandled exception. Fixed with a try/except that routes straight to human review, skipping the retry loop since a broken file won't become readable on a second attempt.
 
 ---
 
@@ -198,4 +208,4 @@ pytest tests/ --cov=utils --cov=models --cov-report=term-missing
 
 `utils/gates.py` and `models/schema.py` are at 100% coverage; `utils/csv_parser.py` at 94% (one untested branch: an edge case with correct headers but zero data rows). `utils/config.py` shows 0% under this command because it requires real environment variables to import — it's exercised by the running application, not by the unit test suite.
 
-The end-to-end path is demonstrated with three sample files (`data/demo_files/`) covering a valid order, one with a missing field, and one with a conflicting price — see the screen recording for a live walkthrough.
+The end-to-end path is demonstrated with four sample files (`data/demo_files/`): a valid order, one with a missing field, one with a conflicting price, and one that's simply not a readable PDF — see the screen recording for a live walkthrough.
