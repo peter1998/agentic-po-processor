@@ -46,6 +46,8 @@ tests/                   Unit tests for utils/gates.py and utils/csv_parser.py
 
 The gate math and CSV parsing logic live in `utils/`, separate from the LangGraph node functions in `agents/graph.py`, specifically so they can be unit tested in isolation — no mocking an LLM or a graph run needed to verify a threshold calculation.
 
+`GraphState` (in `models/schema.py`) is the object LangGraph passes between nodes — it carries the extracted data, retry count, and gate results as the pipeline runs. It's a separate model from `PurchaseOrder` on purpose: `PurchaseOrder` is business data that gets stored, `GraphState` is pipeline-only bookkeeping that never needs to persist past a single run.
+
 ---
 
 ## System design — problem by problem
@@ -146,6 +148,7 @@ Real calls to Claude Sonnet 5 surfaced three things mocked testing couldn't have
 - **Multi-page PDF cost:** every scanned page currently goes through Vision. Production would extract text where possible and fall back to Vision only for scanned pages, to cut cost and latency.
 - **Durable task queue:** `BackgroundTasks` doesn't survive a server restart. Production would move to Redis-backed queueing.
 - **Auth on `/review/approve`:** the `X-API-Key` check is real but minimal — enough to show the endpoint isn't wide open, not a full auth system.
+- **Auth on `/webhook/email`:** currently open — anyone who can reach the server can submit a file. Production would verify the sender (signed webhook from the email provider, or a shared secret) before accepting anything.
 
 These are scope calls, not things that got missed.
 
@@ -210,4 +213,4 @@ pytest tests/ --cov=utils --cov=models --cov-report=term-missing
 
 `utils/gates.py` and `models/schema.py` are at 100% coverage; `utils/csv_parser.py` at 94% (one untested branch: an edge case with correct headers but zero data rows). `utils/config.py` shows 0% under this command because it requires real environment variables to import — it's exercised by the running application, not by the unit test suite.
 
-The end-to-end path is demonstrated with four sample files (`data/demo_files/`): a valid order, one with a missing field, one with a conflicting price, and one that's simply not a readable PDF — see the screen recording for a live walkthrough.
+The end-to-end path is demonstrated with four sample files (`data/demo_files/`): a valid order, one with a missing field, one with a conflicting price, and one that's simply not a readable PDF — see the screen recording for a live walkthrough. Total API cost for running all four through the full pipeline was under $1 — the CSV file skips the LLM entirely (deterministic path), and the rest are a handful of small extraction and reasoning calls, not bulk processing.
