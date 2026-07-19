@@ -117,3 +117,19 @@ Short-form ADRs for the key decisions in this project. Each one names what was c
 **Why:** Unconditional re-indexing calls the real Voyage embedding API for every document on every restart — wasted cost and latency for a corpus that doesn't change between restarts in this scope. Lazy indexing on first request would mean the first real order after any restart pays an unpredictable latency penalty and risks a race if two requests arrive before indexing finishes. Indexing eagerly at startup, but only when needed, avoids both problems.
 
 **Consequences:** If the corpus data files change on disk, the running server won't pick up the change without an explicit `force=True` rebuild or a restart combined with clearing the existing collection. Acceptable for a demo where the corpus is static; would need a proper versioning or file-hash check in production.
+
+---
+
+## ADR-009: Corrupted files skip the retry loop and route straight to review
+
+**Status:** Accepted
+
+**Context:** `parse_file` had no error handling around `pdfplumber.open()` — a genuinely unreadable PDF (tested with random bytes given a `.pdf` extension) raised an unhandled exception that crashed the background task, surfaced during integration testing with real files (see README, "Found and fixed during testing").
+
+**Decision:** `parse_file` catches any parsing exception and sets a `parse_error` field on the state instead of raising. `gate1_router` checks `parse_error` first and routes straight to `human_review`, bypassing the retry loop entirely, regardless of `retry_count`.
+
+**Alternatives considered:** Let a parse failure go through the normal Gate 1 retry cycle like an incomplete extraction; re-raise and let the request fail with a 500.
+
+**Why:** A file that's corrupted at the byte level won't become readable on a second attempt — retrying is pure wasted latency with zero chance of a different outcome, unlike an LLM extraction retry, which genuinely can produce a better result with an adjusted prompt. Treating parse failure as a distinct, immediate path to review (rather than folding it into Gate 1's fraction math) also keeps the review reason accurate: "couldn't read the file" and "read it but fields are missing" are different problems for a reviewer to act on.
+
+**Consequences:** A second failure mode (`parse_error`) to check for alongside the two gates, adding a small amount of branching to `human_review`'s reason logic. Worth it — the alternative was an unhandled crash, not a simpler design.
