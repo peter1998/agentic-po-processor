@@ -104,6 +104,9 @@ class GraphState(BaseModel):
     # --- Gate 1: extraction completeness ---
     gate1_fraction: Optional[float] = Field(None)
     retry_count: int = Field(default=0)
+    parse_error: Optional[str] = Field(
+        None, description="Set by parse_file if the file itself couldn't be read — routes straight to review, no retry."
+    )
 
     # --- Gate 2: RAG validation ---
     item_validations: list[ItemValidationResult] = Field(default_factory=list)

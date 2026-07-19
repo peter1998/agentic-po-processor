@@ -24,32 +24,42 @@ _MIN_TEXT_LENGTH_FOR_TEXT_PATH = 20
 
 
 def parse_file(state: GraphState) -> dict:
-    if state.file_type == "csv":
-        order = try_deterministic_csv_parse(state.file_path)
-        if order is not None:
-            return {"extracted_order": order, "skip_llm_extraction": True}
-        with open(state.file_path) as f:
-            return {"raw_text": f.read()}
+    try:
+        if state.file_type == "csv":
+            order = try_deterministic_csv_parse(state.file_path)
+            if order is not None:
+                return {"extracted_order": order, "skip_llm_extraction": True}
+            with open(state.file_path) as f:
+                return {"raw_text": f.read()}
 
-    if state.file_type == "pdf":
-        with pdfplumber.open(state.file_path) as pdf:
-            text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+        if state.file_type == "pdf":
+            with pdfplumber.open(state.file_path) as pdf:
+                text = "\n".join(page.extract_text() or "" for page in pdf.pages)
 
-        if len(text.strip()) < _MIN_TEXT_LENGTH_FOR_TEXT_PATH:
-            # Scanned PDF with no real text layer — treat it like an
-            # image for extraction purposes instead of failing on empty text.
-            return {"file_type": "image", "raw_text": None}
+            if len(text.strip()) < _MIN_TEXT_LENGTH_FOR_TEXT_PATH:
+                # Scanned PDF with no real text layer — treat it like an
+                # image for extraction purposes instead of failing on empty text.
+                return {"file_type": "image", "raw_text": None}
 
-        return {"raw_text": text}
+            return {"raw_text": text}
 
-    if state.file_type == "image":
-        return {}  # extract_to_json calls extract_from_image directly with file_path
+        if state.file_type == "image":
+            return {}  # extract_to_json calls extract_from_image directly with file_path
 
-    raise ValueError(f"Unsupported file_type: {state.file_type}")
+        raise ValueError(f"Unsupported file_type: {state.file_type}")
+
+    except Exception as e:
+        # A corrupted or unreadable file should never crash the whole
+        # background task — route it to human review with a clear reason,
+        # same as any other failure mode this pipeline handles.
+        return {
+            "parse_error": f"Could not read file ({state.file_type}): {e}",
+            "extracted_order": PurchaseOrder(supplier=Supplier(name=None), items=[]),
+        }
 
 
 def extract_to_json(state: GraphState) -> dict:
-    if state.skip_llm_extraction:
+    if state.skip_llm_extraction or state.parse_error:
         return {}
 
     if state.file_type == "image":
@@ -75,6 +85,10 @@ def increment_retry(state: GraphState) -> dict:
 
 
 def gate1_router(state: GraphState) -> str:
+    if state.parse_error:
+        # An unreadable file won't become readable on retry — no point
+        # burning a second attempt on the exact same broken bytes.
+        return "review"
     if state.gate1_fraction >= settings.gate1_completeness_threshold:
         return "continue"
     if state.retry_count < settings.gate1_max_retries:
@@ -129,7 +143,9 @@ def store_order(state: GraphState) -> dict:
 
 
 def human_review(state: GraphState) -> dict:
-    if state.gate2_validation_rate is not None and state.gate2_validation_rate < settings.gate2_validation_rate_threshold:
+    if state.parse_error:
+        reason = state.parse_error
+    elif state.gate2_validation_rate is not None and state.gate2_validation_rate < settings.gate2_validation_rate_threshold:
         reason = (
             f"Gate 2 failed: {state.gate2_validation_rate:.0%} of items passed RAG validation "
             f"(threshold {settings.gate2_validation_rate_threshold:.0%})"
