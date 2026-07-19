@@ -77,6 +77,15 @@ async def webhook_email(file: UploadFile, background_tasks: BackgroundTasks) -> 
     return {"status": "accepted", "correlation_id": correlation_id}
 
 
+@app.get("/review/pending")
+def review_pending(x_api_key: str = Header(...)) -> dict:
+    """Lists orders currently waiting for a human decision — the missing
+    piece that made the review loop something you had to already know an
+    ID for, instead of something a reviewer could actually discover."""
+    _verify_api_key(x_api_key)
+    return {"pending_reviews": storage.list_pending_reviews()}
+
+
 class ApproveRequest(BaseModel):
     review_id: int
 
