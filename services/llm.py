@@ -6,12 +6,16 @@ import base64
 import json
 
 import anthropic
+from langsmith.wrappers import wrap_anthropic
 from pydantic import ValidationError
 
 from models.schema import PurchaseOrder
 from utils.config import settings
 
-_client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+# wrap_anthropic makes every call through this client show up as a LangSmith
+# trace automatically — the raw SDK bypasses LangChain's instrumentation,
+# so without this wrapper, LANGCHAIN_TRACING_V2=true silently does nothing.
+_client = wrap_anthropic(anthropic.Anthropic(api_key=settings.anthropic_api_key))
 
 _MODEL = "claude-sonnet-5"  # verify current model string in docs.claude.com if this changes
 
