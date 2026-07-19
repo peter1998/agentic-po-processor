@@ -202,6 +202,8 @@ pytest tests/
 
 15 unit tests cover the deterministic logic — Gate 1/Gate 2 threshold math (`utils/gates.py`) and CSV header matching (`utils/csv_parser.py`) — with no LLM calls involved, so they run in well under a second.
 
+8 more (`tests/test_llm_parsing.py`) lock in the three real-API bugs found during integration testing — the `ThinkingBlock` handling and markdown-fence stripping specifically — using plain stand-in objects instead of real API calls, so they stay fast and don't need a working key. A `conftest.py` sets placeholder env values before collection, so the full suite runs on a machine with no `.env` file at all.
+
 ```bash
 pytest tests/ --cov=utils --cov=models --cov-report=term-missing
 ```
